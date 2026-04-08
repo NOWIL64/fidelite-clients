@@ -12,7 +12,7 @@ Application web de gestion clients simple et epuree, avec collaboration en ligne
 - Mise en evidence automatique en dore quand compteur = `3`.
 - Dashboard: total clients, clients importants, moyenne, alertes non lues.
 - Alertes integrees pour clients importants et actions systeme.
-- Sauvegarde automatique des donnees en JSON.
+- Sauvegarde automatique: JSON local ou PostgreSQL (via `DATABASE_URL`).
 - Mode collaboratif en ligne (synchronisation temps reel via SSE).
 - Interface mobile-first, adaptee desktop.
 - Automatisation: reset quotidien automatique des compteurs a heure configurable.
@@ -20,13 +20,19 @@ Application web de gestion clients simple et epuree, avec collaboration en ligne
 ## Lancer le projet
 
 1. Ouvrir un terminal dans le dossier du projet.
-2. Demarrer le serveur:
+2. Installer les dependances:
+
+```powershell
+npm install
+```
+
+3. Demarrer le serveur:
 
 ```powershell
 node server.js
 ```
 
-3. Ouvrir ensuite:
+4. Ouvrir ensuite:
 - [http://localhost:3000](http://localhost:3000)
 
 Le serveur affiche aussi les URL reseau local (ex: `http://192.168.x.x:3000`) pour acces depuis smartphone/tablette/PC sur le meme reseau.
@@ -35,7 +41,8 @@ Le serveur affiche aussi les URL reseau local (ex: `http://192.168.x.x:3000`) po
 
 - Chaque appareil ouvre la meme URL serveur.
 - Les changements sont diffuses en direct a tous les utilisateurs connectes.
-- Les donnees sont partagees dans `data/db.json`.
+- Stockage local: `data/db.json`.
+- Stockage fiable cloud: configurer PostgreSQL avec `STORAGE_BACKEND=postgres` + `DATABASE_URL`.
 
 ## Publication GitHub + multi-connexion en ligne (exemple complet)
 
@@ -66,21 +73,31 @@ Option: vous pouvez aussi laisser Render lire automatiquement `render.yaml` deja
 Render va fournir une URL publique du type:
 `https://fidelite-clients.onrender.com`
 
-### 3) Utilisation collaborative en ligne
+### 3) Rendre le stockage fiable et gratuit (recommande)
+
+Le couple le plus stable en gratuit est:
+- App sur Render Free
+- Base PostgreSQL sur Neon Free
+
+Etapes:
+1. Creer un projet Neon gratuit et recuperer la `DATABASE_URL`.
+2. Dans Render (Service -> Environment), ajouter:
+   - `STORAGE_BACKEND=postgres`
+   - `DATABASE_URL=...` (URL Neon)
+3. Redeployer le service.
+4. Verifier: ajoutez un client, puis redeployez. Le client doit rester.
+
+### 4) Utilisation collaborative en ligne
 
 - Partagez cette URL a tous les utilisateurs.
 - Tout le monde travaille sur la meme base en temps reel.
 - Les modifications client/compteur/alertes sont synchronisees automatiquement.
 
-### Important: persistance en production
+### Important
 
-Ce projet stocke les donnees dans `data/db.json` (fichier local serveur).  
-Sur les offres cloud stateless/free, ce fichier peut etre reinitialise au redemarrage.
-
-Pour un usage pro et stable, il faut brancher une vraie base partagee:
-- PostgreSQL (Render/Railway/Supabase)
-- MongoDB Atlas
-- Neon
+- Si `STORAGE_BACKEND=file`, les donnees peuvent etre perdues sur Render Free (filesystem ephemere).
+- Pour eviter la reinitialisation, utilisez `STORAGE_BACKEND=postgres`.
+- Les offres gratuites peuvent changer avec le temps (quotas/prix des fournisseurs).
 
 ## Structure
 

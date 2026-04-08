@@ -11,7 +11,14 @@ const HOST = process.env.HOST || "0.0.0.0";
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC_DIR = path.join(__dirname, "public");
 const DATA_DIR = path.join(__dirname, "data");
-const DATA_FILE = path.join(DATA_DIR, "db.json");
+const DATA_FILE = process.env.DATA_FILE_PATH || path.join(DATA_DIR, "db.json");
+const STORAGE_BACKEND = (
+  process.env.STORAGE_BACKEND ||
+  (process.env.DATABASE_URL ? "postgres" : "file")
+)
+  .toLowerCase()
+  .trim();
+const POSTGRES_SSL_DISABLED = process.env.PGSSLMODE === "disable";
 
 const MAX_COUNTER = 3;
 const SAVE_INDENT = 2;
@@ -37,6 +44,7 @@ let persistQueue = Promise.resolve();
 let autosaveError = null;
 const sseClients = new Set();
 let sseHeartbeat = null;
+let pgPool = null;
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -170,23 +178,97 @@ function normalizeDbShape(raw) {
   return normalized;
 }
 
-async function loadDb() {
+async function initPostgresStorage() {
+  let Pool;
+  try {
+    ({ Pool } = require("pg"));
+  } catch (error) {
+    throw new Error(
+      "Le mode postgres est active mais la dependance 'pg' est absente. Lancez: npm install"
+    );
+  }
+
+  const ssl = POSTGRES_SSL_DISABLED ? false : { rejectUnauthorized: false };
+  pgPool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl
+  });
+
+  await pgPool.query(`
+    CREATE TABLE IF NOT EXISTS app_state (
+      id INTEGER PRIMARY KEY,
+      data JSONB NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  const bootstrapState = JSON.stringify(clone(DEFAULT_DB));
+  await pgPool.query(
+    `
+      INSERT INTO app_state (id, data)
+      VALUES (1, $1::jsonb)
+      ON CONFLICT (id) DO NOTHING
+    `,
+    [bootstrapState]
+  );
+}
+
+async function readStateFromStorage() {
+  if (STORAGE_BACKEND === "postgres") {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("DATABASE_URL est obligatoire quand STORAGE_BACKEND=postgres.");
+    }
+    await initPostgresStorage();
+    const result = await pgPool.query("SELECT data FROM app_state WHERE id = 1");
+    if (!result.rows[0]?.data) {
+      return clone(DEFAULT_DB);
+    }
+    return result.rows[0].data;
+  }
+
   await ensureDbFile();
   const raw = await fsp.readFile(DATA_FILE, "utf8");
-  db = normalizeDbShape(JSON.parse(raw));
-  db.meta.updatedAt = db.meta.updatedAt || nowIso();
-  db.meta.lastPersistedAt = db.meta.lastPersistedAt || nowIso();
+  return JSON.parse(raw);
+}
+
+async function writeStateToStorage() {
+  if (STORAGE_BACKEND === "postgres") {
+    if (!pgPool) {
+      throw new Error("Connexion PostgreSQL indisponible.");
+    }
+    await pgPool.query(
+      `
+        INSERT INTO app_state (id, data, updated_at)
+        VALUES (1, $1::jsonb, NOW())
+        ON CONFLICT (id)
+        DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()
+      `,
+      [JSON.stringify(db)]
+    );
+    return;
+  }
+
+  await fsp.writeFile(DATA_FILE, JSON.stringify(db, null, SAVE_INDENT), "utf8");
+}
+
+async function loadDb() {
+  const raw = await readStateFromStorage();
+  db = normalizeDbShape(raw);
+  const now = nowIso();
+  db.meta.updatedAt = db.meta.updatedAt || now;
+  db.meta.lastPersistedAt = db.meta.lastPersistedAt || now;
 }
 
 function queuePersist(reason = "update") {
-  db.meta.updatedAt = nowIso();
+  const now = nowIso();
+  db.meta.updatedAt = now;
+  db.meta.lastPersistedAt = now;
   autosaveError = null;
 
   persistQueue = persistQueue
     .catch(() => undefined)
     .then(async () => {
-      await fsp.writeFile(DATA_FILE, JSON.stringify(db, null, SAVE_INDENT), "utf8");
-      db.meta.lastPersistedAt = nowIso();
+      await writeStateToStorage();
     })
     .catch((error) => {
       autosaveError = error.message || String(error);
@@ -194,6 +276,18 @@ function queuePersist(reason = "update") {
     });
 
   return persistQueue;
+}
+
+async function closeStorage() {
+  if (pgPool) {
+    try {
+      await pgPool.end();
+    } catch (error) {
+      console.error("Erreur fermeture PostgreSQL:", error);
+    } finally {
+      pgPool = null;
+    }
+  }
 }
 
 function createAlert({ type = "INFO", clientId = null, message }) {
@@ -624,6 +718,11 @@ function printNetworkHints() {
 
   const localUrl = `http://localhost:${PORT}`;
   console.log(`\nApplication lancee sur ${localUrl}`);
+  if (STORAGE_BACKEND === "postgres") {
+    console.log("Stockage: PostgreSQL externe (donnees persistantes).");
+  } else {
+    console.log(`Stockage: fichier local (${DATA_FILE}).`);
+  }
   if (ips.length > 0) {
     console.log("Accessible sur votre reseau local :");
     for (const ip of ips) {
@@ -635,6 +734,12 @@ function printNetworkHints() {
 }
 
 async function bootstrap() {
+  if (!["file", "postgres"].includes(STORAGE_BACKEND)) {
+    throw new Error(
+      `STORAGE_BACKEND invalide: '${STORAGE_BACKEND}'. Valeurs supportees: file, postgres.`
+    );
+  }
+
   await loadDb();
 
   const server = http.createServer(async (req, res) => {
@@ -689,6 +794,15 @@ async function bootstrap() {
   server.listen(PORT, HOST, () => {
     printNetworkHints();
   });
+
+  const shutdown = async () => {
+    server.close(() => undefined);
+    await closeStorage();
+    process.exit(0);
+  };
+
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
 }
 
 bootstrap().catch((error) => {
