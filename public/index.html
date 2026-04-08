@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Fidelite Clients</title>
+    <meta
+      name="description"
+      content="Gestion de clients collaborative avec compteur, alertes et dashboard."
+    />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Gestion clients collaborative</p>
+          <h1>Fidelite Clients</h1>
+        </div>
+        <div class="sync-status">
+          <span id="saveStatus" class="chip success">Sauvegarde auto active</span>
+          <span id="onlineUsers" class="chip neutral">0 connecte(s)</span>
+        </div>
+      </header>
+
+      <section class="panel dashboard">
+        <h2>Dashboard</h2>
+        <div class="dashboard-grid">
+          <article class="kpi">
+            <p>Total clients</p>
+            <strong id="kpiTotal">0</strong>
+          </article>
+          <article class="kpi">
+            <p>Clients importants</p>
+            <strong id="kpiImportant">0</strong>
+          </article>
+          <article class="kpi">
+            <p>Moyenne compteur</p>
+            <strong id="kpiAverage">0.00</strong>
+          </article>
+          <article class="kpi">
+            <p>Alertes non lues</p>
+            <strong id="kpiAlerts">0</strong>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel add-client">
+        <h2>Ajouter un client</h2>
+        <form id="clientForm" class="form-grid">
+          <label>
+            Nom
+            <input required type="text" name="lastName" maxlength="60" />
+          </label>
+          <label>
+            Prenom
+            <input required type="text" name="firstName" maxlength="60" />
+          </label>
+          <label>
+            Ville
+            <input required type="text" name="city" maxlength="60" />
+          </label>
+          <label>
+            Departement
+            <input required type="text" name="department" maxlength="5" placeholder="75 / 2A / 971" />
+          </label>
+          <button type="submit" class="btn primary">Ajouter</button>
+        </form>
+      </section>
+
+      <section class="panel filters">
+        <h2>Recherche et filtres</h2>
+        <div class="filters-grid">
+          <label>
+            Rechercher (nom ou prenom)
+            <input id="searchInput" type="search" placeholder="Ex: Dupont ou Alice" />
+          </label>
+          <label>
+            Ville
+            <select id="cityFilter">
+              <option value="">Toutes</option>
+            </select>
+          </label>
+          <label>
+            Departement
+            <select id="departmentFilter">
+              <option value="">Tous</option>
+            </select>
+          </label>
+          <label>
+            Tri
+            <select id="sortFilter">
+              <option value="name">Nom (A-Z)</option>
+              <option value="counter_desc">Compteur (3 a 0)</option>
+              <option value="recent">Derniere mise a jour</option>
+            </select>
+          </label>
+        </div>
+        <label class="inline-toggle">
+          <input id="importantOnly" type="checkbox" />
+          Afficher uniquement les clients importants (compteur = 3)
+        </label>
+      </section>
+
+      <section class="panel automation">
+        <h2>Automatisation</h2>
+        <div class="automation-grid">
+          <label class="inline-toggle">
+            <input id="autoResetEnabled" type="checkbox" />
+            Activer le reset quotidien automatique des compteurs
+          </label>
+          <label>
+            Heure de reset
+            <input id="autoResetTime" type="time" value="09:00" />
+          </label>
+          <button id="saveAutomation" class="btn secondary">Enregistrer</button>
+        </div>
+      </section>
+
+      <section class="panel clients">
+        <div class="section-title">
+          <h2>Clients</h2>
+          <span id="clientsCount" class="chip neutral">0 resultat(s)</span>
+        </div>
+        <div id="clientsList" class="client-list"></div>
+      </section>
+
+      <section class="panel alerts">
+        <div class="section-title">
+          <h2>Alertes</h2>
+          <button id="readAllAlerts" class="btn ghost">Tout marquer comme lu</button>
+        </div>
+        <div id="alertsList" class="alerts-list"></div>
+      </section>
+    </main>
+
+    <dialog id="editDialog" class="dialog">
+      <form id="editForm" class="dialog-card">
+        <h3>Modifier le client</h3>
+        <input type="hidden" name="id" />
+        <label>
+          Nom
+          <input required type="text" name="lastName" maxlength="60" />
+        </label>
+        <label>
+          Prenom
+          <input required type="text" name="firstName" maxlength="60" />
+        </label>
+        <label>
+          Ville
+          <input required type="text" name="city" maxlength="60" />
+        </label>
+        <label>
+          Departement
+          <input required type="text" name="department" maxlength="5" />
+        </label>
+        <div class="dialog-actions">
+          <button type="button" id="cancelEdit" class="btn ghost">Annuler</button>
+          <button type="submit" class="btn primary">Enregistrer</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="confirmDialog" class="dialog">
+      <div class="dialog-card">
+        <h3 id="confirmTitle">Confirmation</h3>
+        <p id="confirmMessage"></p>
+        <div class="dialog-actions">
+          <button type="button" id="confirmCancel" class="btn ghost">Annuler</button>
+          <button type="button" id="confirmAccept" class="btn danger">Confirmer</button>
+        </div>
+      </div>
+    </dialog>
+
+    <template id="clientCardTemplate">
+      <article class="client-card">
+        <div class="client-main">
+          <div>
+            <h3 class="client-name"></h3>
+            <p class="client-meta"></p>
+          </div>
+          <span class="counter-badge"></span>
+        </div>
+        <div class="client-actions">
+          <button class="btn ghost counter-down" type="button">-1</button>
+          <button class="btn ghost counter-up" type="button">+1</button>
+          <button class="btn ghost reset-counter" type="button">Reset</button>
+          <button class="btn secondary edit-client" type="button">Modifier</button>
+        </div>
+      </article>
+    </template>
+
+    <script src="/app.js" defer></script>
+  </body>
+</html>

@@ -1,0 +1,11 @@
+{
+  "name": "fidelite-clients",
+  "version": "1.0.0",
+  "description": "Systeme de gestion de clients simple, collaboratif et mobile-first.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "license": "MIT"
+}
