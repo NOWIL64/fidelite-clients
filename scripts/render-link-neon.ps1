@@ -6,6 +6,8 @@ param(
   [string]$DatabaseUrl
 )
 
+$ErrorActionPreference = "Stop"
+
 if (-not $env:RENDER_TOKEN) {
   Write-Error "RENDER_TOKEN absent. Definis d'abord la variable d'environnement RENDER_TOKEN."
   exit 1
@@ -31,10 +33,12 @@ if (-not $service) {
   exit 1
 }
 
-$envVarsRaw = Invoke-RestMethod -Uri "https://api.render.com/v1/services/$($service.id)/env-vars?limit=500" -Headers $headers -Method Get
+$envVarsRaw = Invoke-RestMethod -Uri "https://api.render.com/v1/services/$($service.id)/env-vars?limit=100" -Headers $headers -Method Get
 $envMap = @{}
 foreach ($entry in $envVarsRaw) {
-  $envMap[$entry.key] = $entry.value
+  if ($entry.envVar -and $entry.envVar.key) {
+    $envMap[$entry.envVar.key] = $entry.envVar.value
+  }
 }
 
 $envMap["STORAGE_BACKEND"] = "postgres"
