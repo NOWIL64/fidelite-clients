@@ -87,6 +87,13 @@ Etapes:
 3. Redeployer le service.
 4. Verifier: ajoutez un client, puis redeployez. Le client doit rester.
 
+Option automatique en ligne de commande (si vous avez un token Render API):
+
+```powershell
+$env:RENDER_TOKEN="rtk_xxx"
+.\scripts\render-link-neon.ps1 -RenderServiceName "fidelite-clients" -DatabaseUrl "postgresql://..."
+```
+
 ### 4) Utilisation collaborative en ligne
 
 - Partagez cette URL a tous les utilisateurs.
